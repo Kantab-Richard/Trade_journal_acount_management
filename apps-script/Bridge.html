@@ -1,23 +1,43 @@
 <!doctype html>
-<html><head><base target="_top"><meta charset="utf-8"></head>
-<body><script>
-  const allowedOrigins = <?!= JSON.stringify(allowedOrigins) ?>;
-  const replies = new Map();
-  function reply(id, result, error) {
-    const origin = replies.get(String(id));
-    if (origin && allowedOrigins.includes(origin)) window.parent.postMessage({journalitBridgeResponse:true,id,result,error}, origin);
-    replies.delete(String(id));
-  }
-  window.addEventListener('message', event => {
-    if (event.source !== window.parent || !allowedOrigins.includes(event.origin)) return;
-    const request = event.data;
-    if (!request || request.journalitBridge !== true || !request.id) return;
-    replies.set(String(request.id), event.origin);
-    const runner = google.script.run
-      .withSuccessHandler(result => reply(request.id, result, null))
-      .withFailureHandler(error => reply(request.id, null, error && error.message ? error.message : 'Google sync failed.'));
-    if (request.action === 'get') runner.getWorkspace();
-    else if (request.action === 'save') runner.saveWorkspace(request.payload);
-    else reply(request.id, null, 'Unsupported sync action.');
-  });
-</script></body></html>
+<html>
+  <head><base target="_top"><meta charset="utf-8"><title>Journalit Google Sync</title></head>
+  <body style="font:15px Arial,sans-serif;padding:24px;color:#243027">
+    <h2>Journalit Google Sync</h2>
+    <p id="status">Connecting to Journalit… Keep this window open while syncing.</p>
+    <script>
+      const allowedOrigins = <?!= JSON.stringify(allowedOrigins) ?>;
+      const parentOrigin = <?!= JSON.stringify(parentOrigin) ?>;
+      const nonce = <?!= JSON.stringify(nonce) ?>;
+      const status = document.getElementById('status');
+
+      if (!allowedOrigins.includes(parentOrigin) || !nonce) {
+        status.textContent = 'This sync window was opened from an unapproved site. Close it and open Connect Google from Journalit.';
+      } else {
+        const opener = window.top && window.top.opener;
+        if (!opener || opener.closed) {
+          status.textContent = 'Return to Journalit and choose Connect Google to open a secure sync window.';
+        } else {
+          const channel = new MessageChannel();
+          const bridgePort = channel.port1;
+          bridgePort.onmessage = event => {
+            const request = event.data;
+            if (!request || request.journalitBridge !== true || !request.id) return;
+            const runner = google.script.run
+              .withSuccessHandler(result => bridgePort.postMessage({journalitBridgeResponse:true,id:request.id,result}))
+              .withFailureHandler(error => bridgePort.postMessage({journalitBridgeResponse:true,id:request.id,error:error && error.message ? error.message : 'Google sync failed.'}));
+            if (request.action === 'get') runner.getWorkspace();
+            else if (request.action === 'save') runner.saveWorkspace(request.payload);
+            else bridgePort.postMessage({journalitBridgeResponse:true,id:request.id,error:'Unsupported sync action.'});
+          };
+          bridgePort.start();
+          try {
+            opener.postMessage({journalitBridgeReady:true,nonce}, parentOrigin, [channel.port2]);
+            status.textContent = 'Connected. Keep this window open while using Journalit.';
+          } catch (error) {
+            status.textContent = 'Could not connect to Journalit. Check the allowed-origin setting and reopen Connect Google.';
+          }
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -1,13 +1,14 @@
 const JOURNALIT_PROPERTY = 'JOURNALIT_WORKSPACE_SHEET_ID';
 const CHUNK_SIZE = 40000;
 
-function doGet() {
+function doGet(e) {
   const template = HtmlService.createTemplateFromFile('Bridge');
   template.allowedOrigins = (PropertiesService.getScriptProperties().getProperty('JOURNALIT_ALLOWED_ORIGINS') || '')
     .split(',').map(value => value.trim()).filter(Boolean);
+  template.parentOrigin = (e && e.parameter && e.parameter.origin) || '';
+  template.nonce = (e && e.parameter && e.parameter.nonce) || '';
   return template.evaluate()
-    .setTitle('Journalit Google Sync')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    .setTitle('Journalit Google Sync');
 }
 
 function getWorkspace() {
